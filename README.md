@@ -1,49 +1,44 @@
-# Android TV Chromecast Monitor
+# CastMonitor (Home Assistant Integration)
 
-Script Python minimal pour detecter les appareils Android TV exposes via Chromecast sur le reseau local et afficher leur etat de lecture en terminal.
+Integration Home Assistant compatible HACS pour detecter les lectures actives sur Chromecast / Android TV.
 
-## Fonctionnement
+## Structure du depot
 
-- decouverte automatique via `pychromecast`
-- affichage temps reel de l'application active
-- detection validee pour VLC sur Android TV
+- `hacs.json`
+- `custom_components/castmonitor/__init__.py`
+- `custom_components/castmonitor/manifest.json`
+- `custom_components/castmonitor/sensor.py`
+- `custom_components/castmonitor/strings.json`
 
-## Installation
+## Installation via HACS
 
-```bash
-cd /home/claigle/Dev/perso/player_on_network
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+1. Pousser ce depot sur GitHub.
+2. Dans Home Assistant, ouvrir HACS.
+3. Aller dans `Integrations` puis `Custom repositories`.
+4. Ajouter l'URL de ce depot avec le type `Integration`.
+5. Installer `CastMonitor`.
+6. Redemarrer Home Assistant.
+
+## Configuration
+
+Ajouter dans `configuration.yaml`:
+
+```yaml
+sensor:
+	- platform: castmonitor
+		scan_interval: 30
 ```
 
-## Utilisation
+## Entite exposee
 
-```bash
-python main.py
-python main.py --verbose
-python main.py --no-color
-```
+- Capteur: `sensor.castmonitor_active_streams`
+- Valeur: nombre de lectures actives
+- Attributs:
+	- `playing_count`
+	- `device_count`
+	- `devices` (liste detaillee avec `device_name`, `ip`, `app_name`, `state`, `title`)
 
-## Sortie attendue
+## Notes
 
-```text
-Appareil             IP              État         En lecture
-────────────────────────────────────────────────────────────────────────
-▶ VLC                192.168.1.33    Playing      <VLC>
-⏹ Unknown            192.168.1.30    Stopped      ---
-```
-
-## Fichiers utiles
-
-- `main.py` : point d'entree
-- `monitor_loop.py` : decouverte et polling
-- `vlc_chromecast.py` : integration pychromecast
-- `display.py` : affichage terminal
-- `config.py` : timeouts et largeurs d'affichage
-
-## Limitations
-
-- le script depend uniquement des informations exposees par Chromecast
-- certaines apps remontent peu de metadonnees
-- VLC Android peut apparaitre en `Playing` sans titre detaille
+- L'integration utilise `pychromecast` via le champ `requirements` du `manifest.json`.
+- Les informations remontent ce que Chromecast expose; certaines applications peuvent fournir peu de metadonnees.

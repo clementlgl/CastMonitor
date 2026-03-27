@@ -1,0 +1,1 @@
+"""CastMonitor Home Assistant integration."""
