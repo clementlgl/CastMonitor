@@ -1,44 +1,58 @@
-# CastMonitor (Home Assistant Integration)
-
-Integration Home Assistant compatible HACS pour detecter les lectures actives sur Chromecast / Android TV.
-
-## Structure du depot
-
-- `hacs.json`
-- `custom_components/castmonitor/__init__.py`
-- `custom_components/castmonitor/manifest.json`
-- `custom_components/castmonitor/sensor.py`
-- `custom_components/castmonitor/strings.json`
-
 ## Installation via HACS
 
-1. Pousser ce depot sur GitHub.
+1. Pousser ce dépôt sur GitHub.
 2. Dans Home Assistant, ouvrir HACS.
-3. Aller dans `Integrations` puis `Custom repositories`.
-4. Ajouter l'URL de ce depot avec le type `Integration`.
+3. Aller dans `Intégrations` puis `Dépôts personnalisés`.
+4. Ajouter l'URL de ce dépôt avec le type `Intégration`.
 5. Installer `CastMonitor`.
-6. Redemarrer Home Assistant.
+6. Redémarrer Home Assistant.
 
-## Configuration
+## Ajout d'un appareil
 
-Ajouter dans `configuration.yaml`:
+1. Aller dans **Paramètres → Appareils et services**.
+2. Cliquer **+ Ajouter une intégration** et rechercher `CastMonitor`.
+3. Renseigner :
+   - **Nom** — nom affiché dans HA (ex: `Salon TV` )
+   - **Adresse IP** — IP locale du Chromecast
+   - **Port** — `8009` par défaut
+4. HA tente une connexion pour valider. En cas d'échec, un message d'erreur s'affiche.
+5. Répéter pour chaque appareil à surveiller.
 
-```yaml
-sensor:
-	- platform: castmonitor
-		scan_interval: 30
-```
+## Entités exposées
 
-## Entite exposee
+Pour chaque appareil ajouté (ex: `Salon TV` ) :
 
-- Capteur: `sensor.castmonitor_active_streams`
-- Valeur: nombre de lectures actives
-- Attributs:
-	- `playing_count`
-	- `device_count`
-	- `devices` (liste detaillee avec `device_name`, `ip`, `app_name`, `state`, `title`)
+| Entité | ID                       | Description             |
+|--------|--------------------------|-------------------------|
+| Player | `sensor.salon_tv_player` | État de lecture         |
+| Title  | `sensor.salon_tv_title`  | Titre du média en cours |
+
+### États possibles ( `sensor.<nom>_player` )
+
+| Valeur        | Description                 |
+|---------------|-----------------------------|
+| `playing`     | Lecture en cours            |
+| `paused`      | En pause                    |
+| `idle`        | App active, rien en lecture |
+| `stopped`     | Aucune app active           |
+| `unreachable` | Appareil inaccessible       |
+
+### Attributs du sensor Player
+
+| Attribut   | Description                          |
+|------------|--------------------------------------|
+| `app_name` | Application en cours (YouTube, VLC…) |
+| `title`    | Titre du média                       |
+| `ip`       | Adresse IP de l'appareil             |
+| `port`     | Port de connexion                    |
+
+## Fonctionnement technique
+
+- Connexion TCP persistante via `pychromecast` — pas de polling.
+- Mise à jour instantanée à chaque changement d'état.
+- Reconnexion automatique après 15 secondes en cas de déconnexion.
+- Dépendance : `pychromecast==13.1.0` (installée automatiquement).
 
 ## Notes
 
-- L'integration utilise `pychromecast` via le champ `requirements` du `manifest.json`.
-- Les informations remontent ce que Chromecast expose; certaines applications peuvent fournir peu de metadonnees.
+- Les Chromecasts doivent être accessibles sur le réseau local de HA.
