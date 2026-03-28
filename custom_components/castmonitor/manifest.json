@@ -1,12 +1,12 @@
 {
   "domain": "castmonitor",
   "name": "CastMonitor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "documentation": "https://github.com/clementlgl/CastMonitor",
   "issue_tracker": "https://github.com/clementlgl/CastMonitor/issues",
   "codeowners": ["@clementlgl"],
   "requirements": ["pychromecast==13.1.0"],
   "config_flow": true,
   "integration_type": "device",
-  "iot_class": "local_polling"
+  "iot_class": "local_push"
 }

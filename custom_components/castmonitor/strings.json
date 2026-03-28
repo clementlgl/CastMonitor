@@ -7,8 +7,7 @@
         "data": {
           "name": "Device name",
           "host": "IP address",
-          "port": "Port",
-          "scan_interval": "Update interval (seconds)"
+          "port": "Port"
         }
       }
     },
@@ -17,16 +16,6 @@
     },
     "abort": {
       "already_configured": "This device is already configured."
-    }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "CastMonitor options",
-        "data": {
-          "scan_interval": "Update interval (seconds)"
-        }
-      }
     }
   }
 }

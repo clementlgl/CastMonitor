@@ -7,16 +7,13 @@ import logging
 import pychromecast
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, OptionsFlow
-from homeassistant.const import CONF_SCAN_INTERVAL
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigFlow
 
 from .const import (
     CONF_HOST,
     CONF_NAME,
     CONF_PORT,
     DEFAULT_PORT,
-    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
 
@@ -36,7 +33,6 @@ class CastMonitorConfigFlow(ConfigFlow, domain=DOMAIN):
             host = user_input[CONF_HOST].strip()
             port = user_input[CONF_PORT]
             name = user_input[CONF_NAME].strip()
-            scan_interval = user_input[CONF_SCAN_INTERVAL]
 
             await self.async_set_unique_id(f"{host}:{port}")
             self._abort_if_unique_id_configured()
@@ -51,7 +47,6 @@ class CastMonitorConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=name,
                     data={CONF_HOST: host, CONF_PORT: port, CONF_NAME: name},
-                    options={CONF_SCAN_INTERVAL: scan_interval},
                 )
 
         schema = vol.Schema(
@@ -59,33 +54,9 @@ class CastMonitorConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_NAME): str,
                 vol.Required(CONF_HOST): str,
                 vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
-
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Return the options flow handler."""
-        return CastMonitorOptionsFlow()
-
-
-class CastMonitorOptionsFlow(OptionsFlow):
-    """Handle options for CastMonitor."""
-
-    async def async_step_init(self, user_input=None):
-        """Manage options."""
-        if user_input is not None:
-            return self.async_create_entry(data=user_input)
-
-        current = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-        schema = vol.Schema(
-            {
-                vol.Optional(CONF_SCAN_INTERVAL, default=current): int,
-            }
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
 
 
 def _validate_connection(host: str, port: int, name: str) -> None:
