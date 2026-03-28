@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import pychromecast
@@ -28,7 +29,9 @@ async def async_setup_entry(
     host = entry.data[CONF_HOST]
     port = entry.data[CONF_PORT]
     name = entry.data[CONF_NAME]
-    async_add_entities([CastMonitorSensor(hass, host, port, name)])
+    title_sensor = CastMonitorTitleSensor(host, port, name)
+    state_sensor = CastMonitorSensor(hass, host, port, name, title_sensor)
+    async_add_entities([state_sensor, title_sensor])
 
 
 def _player_state_from_media_status(
@@ -47,18 +50,43 @@ def _player_state_from_media_status(
     return "stopped"
 
 
+def _title_from_media_status(media_status: MediaStatus | None) -> str | None:
+    """Extract the best available title from MediaStatus."""
+    if media_status is None:
+        return None
+
+    title = getattr(media_status, "title", None)
+    if title:
+        return title
+
+    media_metadata = getattr(media_status, "media_metadata", None) or {}
+    if isinstance(media_metadata, dict):
+        for key in ("title", "episode", "seriesTitle", "albumName", "artist"):
+            value = media_metadata.get(key)
+            if value:
+                return str(value)
+
+    content_id = getattr(media_status, "content_id", None)
+    if content_id:
+        return str(content_id)
+
+    return None
+
+
 class CastMonitorSensor(SensorEntity):
     """Expose playback state for a single Chromecast device (push-based)."""
 
     _attr_has_entity_name = False
     _attr_should_poll = False
 
-    def __init__(self, hass: HomeAssistant, host: str, port: int, name: str) -> None:
+    def __init__(self, hass: HomeAssistant, host: str, port: int, name: str, title_sensor: "CastMonitorTitleSensor") -> None:
         self.hass = hass
         self._host = host
         self._port = port
-        self._attr_name = name
+        self._device_name = name
+        self._title_sensor = title_sensor
         self._attr_unique_id = f"castmonitor_{host.replace('.', '_')}_{port}"
+        self._attr_name = f"{name} Player"
         self._attr_native_value = "stopped"
         self._app_name: str | None = None
         self._title: str | None = None
@@ -69,6 +97,11 @@ class CastMonitorSensor(SensorEntity):
             manufacturer="Google",
             model="Chromecast",
         )
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Use device name as slug so entity_id is sensor.<device_name>_player."""
+        return f"{self._device_name.lower().replace(' ', '_')}_player"
 
     @property
     def icon(self) -> str:
@@ -101,7 +134,7 @@ class CastMonitorSensor(SensorEntity):
         """Open connection and attach listeners. Runs in executor."""
         try:
             cast = pychromecast.get_chromecast_from_host(
-                (self._host, self._port, None, self._attr_name, None)
+                (self._host, self._port, None, self._device_name, None)
             )
             cast.wait(timeout=10)
         except Exception as err:
@@ -112,10 +145,14 @@ class CastMonitorSensor(SensorEntity):
             return
 
         self._cast = cast
+        cast.register_status_listener(_CastStatusListener(self))
         cast.register_connection_listener(_ConnectionListener(self))
         cast.media_controller.register_status_listener(_MediaStatusListener(self))
+        cast.media_controller.update_status()
 
-        # Sync initial state from whatever is already playing
+        # Wait for the async status response before reading it
+        time.sleep(1)
+
         self.hass.loop.call_soon_threadsafe(
             self._apply_cast_state, cast, cast.media_controller.status
         )
@@ -138,6 +175,7 @@ class CastMonitorSensor(SensorEntity):
         self._attr_native_value = "unreachable"
         self._app_name = None
         self._title = None
+        self._title_sensor.set_title(None)
         self.async_write_ha_state()
 
     def _apply_cast_state(
@@ -151,15 +189,28 @@ class CastMonitorSensor(SensorEntity):
             or None
         )
         self._app_name = app_name
-        self._title = getattr(media_status, "title", None)
+        self._title = _title_from_media_status(media_status)
+        self._title_sensor.set_title(self._title)
         self._attr_native_value = _player_state_from_media_status(media_status, app_name)
         if self._attr_native_value == "stopped" and getattr(cast, "is_idle", False):
             self._attr_native_value = "idle"
         self.async_write_ha_state()
 
     def _apply_media_status(self, status: MediaStatus) -> None:
-        self._title = getattr(status, "title", None)
+        cast = self._cast
+        if cast is not None:
+            self._app_name = (
+                getattr(cast, "app_display_name", None)
+                or getattr(cast, "app_id", None)
+                or self._app_name
+            )
+        self._title = _title_from_media_status(status)
+        self._title_sensor.set_title(self._title)
         self._attr_native_value = _player_state_from_media_status(status, self._app_name)
+        self.async_write_ha_state()
+
+    def _update_app_name(self, app_name: str | None) -> None:
+        self._app_name = app_name
         self.async_write_ha_state()
 
     def _schedule_reconnect(self) -> None:
@@ -168,10 +219,52 @@ class CastMonitorSensor(SensorEntity):
 
     async def _async_reconnect(self) -> None:
         """Reconnect after a short delay."""
-        import asyncio
+        import asyncio  # noqa: PLC0415
         await asyncio.sleep(15)
         if self._cast is None:
             await self.hass.async_add_executor_job(self._connect)
+
+
+class CastMonitorTitleSensor(SensorEntity):
+    """Expose the current media title for a Chromecast device."""
+
+    _attr_has_entity_name = False
+    _attr_should_poll = False
+    _attr_icon = "mdi:music-note"
+
+    def __init__(self, host: str, port: int, name: str) -> None:
+        self._attr_unique_id = f"castmonitor_{host.replace('.', '_')}_{port}_title"
+        self._attr_name = f"{name} Title"
+        self._attr_native_value = None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{host}:{port}")},
+            name=name,
+            manufacturer="Google",
+            model="Chromecast",
+        )
+
+    @property
+    def suggested_object_id(self) -> str:
+        return f"{self._attr_name.lower().replace(' ', '_')}"
+
+    def set_title(self, title: str | None) -> None:
+        """Called by the state sensor whenever the title changes."""
+        self._attr_native_value = title
+        if self.hass is not None:
+            self.async_write_ha_state()
+
+
+class _CastStatusListener:
+    """Receives cast-level status updates (app name, volume) from pychromecast thread."""
+
+    def __init__(self, sensor: CastMonitorSensor) -> None:
+        self._sensor = sensor
+
+    def new_cast_status(self, status: Any) -> None:
+        app_name = getattr(status, "display_name", None) or getattr(status, "app_id", None)
+        self._sensor.hass.loop.call_soon_threadsafe(
+            self._sensor._update_app_name, app_name
+        )
 
 
 class _MediaStatusListener:
